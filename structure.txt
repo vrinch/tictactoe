@@ -1,0 +1,111 @@
+.
+├── README.md
+├── app
+│   ├── (auth)
+│   │   ├── _layout.tsx
+│   │   └── index.tsx
+│   ├── (main)
+│   │   ├── Profile.tsx
+│   │   └── _layout.tsx
+│   ├── (tabs)
+│   │   ├── Game.tsx
+│   │   ├── History.tsx
+│   │   ├── Profile.tsx
+│   │   ├── Settings.tsx
+│   │   ├── Stats.tsx
+│   │   └── _layout.tsx
+│   ├── +not-found.tsx
+│   ├── _layout.tsx
+│   ├── index.tsx
+│   └── walkthrough
+│       ├── _layout.tsx
+│       └── index.tsx
+├── app.json
+├── assets
+│   ├── fonts
+│   │   ├── Be_Vietnam_Pro
+│   │   ├── SpaceMono-Regular.ttf
+│   │   └── fontello
+│   ├── icons
+│   │   ├── adaptive-icon.png
+│   │   ├── ios-dark.png
+│   │   ├── ios-light.png
+│   │   ├── ios-tinted.png
+│   │   ├── splash-icon-dark.png
+│   │   └── splash-icon-light.png
+│   └── images
+│       ├── favicon.png
+│       ├── git
+│       ├── notification-icon.png
+│       ├── partial-react-logo.png
+│       ├── react-logo.png
+│       ├── react-logo@2x.png
+│       └── react-logo@3x.png
+├── components
+│   ├── buttons
+│   │   ├── Button.tsx
+│   │   ├── CustomTouchable.tsx
+│   │   └── index.ts
+│   ├── common
+│   │   ├── CircularProgress.tsx
+│   │   ├── CustomActionSheet.tsx
+│   │   ├── Pagination.tsx
+│   │   ├── ProfileImage.tsx
+│   │   ├── RollingNumber
+│   │   ├── ThemedText.tsx
+│   │   ├── ThemedTextInput.tsx
+│   │   ├── ThemedView.tsx
+│   │   ├── ToggleSwitch.tsx
+│   │   └── index.ts
+│   ├── headers
+│   │   ├── Header.tsx
+│   │   └── index.ts
+│   ├── sheets
+│   │   ├── UsernameSheet.tsx
+│   │   └── index.ts
+│   ├── svgicons
+│   │   └── index.tsx
+│   └── toast
+│       ├── Toast.tsx
+│       ├── ToastManager.tsx
+│       └── index.ts
+├── constants
+│   ├── Colors.ts
+│   ├── arrays.ts
+│   ├── config.ts
+│   ├── index.ts
+│   └── theme.ts
+├── eas.json
+├── eslint.config.js
+├── expo-env.d.ts
+├── hooks
+│   ├── index.ts
+│   ├── useColorScheme.ts
+│   ├── useColorScheme.web.ts
+│   ├── useDisableGestures.ts
+│   ├── useFontScale.ts
+│   └── useThemeColor.ts
+├── package.json
+├── redux
+│   ├── actions
+│   │   ├── globalActions.tsx
+│   │   ├── index.tsx
+│   │   ├── types.tsx
+│   │   └── userActions.tsx
+│   ├── reducers
+│   │   ├── globalReducers.tsx
+│   │   ├── index.tsx
+│   │   └── userReducers.tsx
+│   └── store
+│       └── index.tsx
+├── routes
+│   └── index.tsx
+├── services
+├── structure.txt
+├── tsconfig.json
+├── utils
+│   ├── index.ts
+│   └── types.ts
+└── yarn.lock
+
+30 directories, 79 files
