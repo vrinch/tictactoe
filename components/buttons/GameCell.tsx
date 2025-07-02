@@ -11,6 +11,7 @@ interface GameCellProps {
   onPress: () => void;
   disabled?: boolean;
   isWinning?: boolean;
+  cellSize?: number;
 }
 
 const GameCell: FC<GameCellProps> = ({
@@ -18,6 +19,7 @@ const GameCell: FC<GameCellProps> = ({
   onPress,
   disabled = false,
   isWinning = false,
+  cellSize = responsiveScale(100),
 }) => {
   // Get theme colors for consistent styling
   const backgroundColor = useThemeColor({}, 'card');
@@ -25,21 +27,24 @@ const GameCell: FC<GameCellProps> = ({
   const successColor = useThemeColor({}, 'success');
   const textColor = useThemeColor({}, 'text');
 
+  // Calculate font size based on cell size (responsive)
+  const fontSize = Math.max(Math.floor(cellSize * 0.4), 16); // Minimum 16, 40% of cell size
+  const borderRadius = Math.max(Math.floor(cellSize * 0.08), 4); // Minimum 4, 8% of cell size
+
   // Get cell styling based on winning state
   const getCellStyle = () => {
-    let style = [
+    return [
       styles.cellContainer,
       {
+        width: cellSize,
+        height: cellSize,
         backgroundColor,
         borderColor: isWinning ? successColor : borderColor,
+        borderWidth: isWinning ? 3 : 2,
+        borderRadius: borderRadius,
+        margin: 2,
       },
     ];
-
-    if (isWinning) {
-      style.push({ borderWidth: 3 });
-    }
-
-    return style;
   };
 
   // Get text color based on player value
@@ -55,7 +60,15 @@ const GameCell: FC<GameCellProps> = ({
       onPress={onPress}
       disabled={disabled || value !== null}
       activeOpacity={0.7}>
-      <ThemedText style={[styles.cellTextStyle, { color: getTextColor() }]}>
+      <ThemedText
+        adjustsFontSizeToFit
+        style={[
+          styles.cellTextStyle,
+          {
+            color: getTextColor(),
+            fontSize: fontSize,
+          },
+        ]}>
         {value || ''}
       </ThemedText>
     </TouchableOpacity>
@@ -64,17 +77,12 @@ const GameCell: FC<GameCellProps> = ({
 
 const styles = StyleSheet.create({
   cellContainer: {
-    width: responsiveScale(100),
-    height: responsiveScale(100),
     justifyContent: 'center',
     alignItems: 'center',
-    borderWidth: 2,
-    borderRadius: responsiveScale(8),
-    margin: responsiveScale(2),
   },
   cellTextStyle: {
-    fontSize: responsiveScale(36),
     fontWeight: 'bold',
+    textAlign: 'center',
   },
 });
 

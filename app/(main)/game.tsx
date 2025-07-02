@@ -1,7 +1,13 @@
 import { router } from 'expo-router';
 import { History, LogOut, RotateCcw, Settings } from 'lucide-react-native';
 import React, { useEffect, useRef, useState } from 'react';
-import { Alert, StyleSheet, TouchableOpacity, View } from 'react-native';
+import {
+  Alert,
+  ScrollView,
+  StyleSheet,
+  TouchableOpacity,
+  View,
+} from 'react-native';
 
 import { GameButton } from '@/components/buttons';
 import {
@@ -58,9 +64,12 @@ export default function GameScreen() {
     shallowEqual,
   );
 
+  // Board size state with default to 3
+  const [boardSize, setBoardSize] = useState<number>(3);
+
   // Game state management
   const [gameState, setGameState] = useState<GameState>({
-    board: createEmptyBoard(),
+    board: createEmptyBoard(3), // Start with 3x3 board
     currentPlayer: userSettings?.aiPlaysFirst ? 'O' : 'X',
     winner: null,
     gameOver: false,
@@ -174,7 +183,7 @@ export default function GameScreen() {
     }
 
     const newBoard = makeMove(gameState.board, index, 'X');
-    const winner = checkWinner(newBoard);
+    const winner = checkWinner(newBoard, boardSize);
     const newMoveCount = moveCount + 1;
     const newMoves = [...gameMoves, { player: 'X', position: index }];
 
@@ -195,11 +204,11 @@ export default function GameScreen() {
 
   // Handle AI move with tracking
   const handleAIMove = async (): Promise<void> => {
-    const aiMoveIndex = getAIMove(gameState.board, difficulty);
+    const aiMoveIndex = getAIMove(gameState.board, difficulty, boardSize);
     if (aiMoveIndex === -1) return;
 
     const newBoard = makeMove(gameState.board, aiMoveIndex, 'O');
-    const winner = checkWinner(newBoard);
+    const winner = checkWinner(newBoard, boardSize);
     const newMoveCount = moveCount + 1;
     const newMoves = [...gameMoves, { player: 'O', position: aiMoveIndex }];
 
@@ -287,13 +296,14 @@ export default function GameScreen() {
     }
   };
 
-  // Start new game
-  const handleNewGame = (): void => {
+  // Start new game with optional board size
+  const handleNewGame = (newSize?: number): void => {
     if (autoResetTimer.current) {
       clearTimeout(autoResetTimer.current);
     }
 
-    const newBoard = createEmptyBoard();
+    const currentBoardSize = newSize || boardSize;
+    const newBoard = createEmptyBoard(currentBoardSize);
     const initialPlayer = userSettings?.aiPlaysFirst ? 'O' : 'X';
 
     setGameState(prev => ({
@@ -306,6 +316,12 @@ export default function GameScreen() {
     setMoveCount(0);
     setGameStartTime(Date.now());
     setGameMoves([]);
+  };
+
+  // Handle board size change
+  const handleBoardSizeChange = (newSize: number): void => {
+    setBoardSize(newSize);
+    handleNewGame(newSize); // Immediately create new board with correct size
   };
 
   // Reset all scores with confirmation and persist to database
@@ -377,7 +393,7 @@ export default function GameScreen() {
       dispatch(getUserDetails(null));
 
       setGameState({
-        board: createEmptyBoard(),
+        board: createEmptyBoard(boardSize),
         currentPlayer: 'X',
         winner: null,
         gameOver: false,
@@ -446,113 +462,155 @@ export default function GameScreen() {
         }
       />
 
-      <View style={styles.userInfoWrapper}>
-        <ThemedText style={styles.usernameTextStyle}>
-          Welcome, {userDetails?.username}!
+      <ScrollView
+        style={styles.scrollContainer}
+        contentContainerStyle={styles.scrollContentContainer}
+        showsVerticalScrollIndicator={false}>
+        <View style={styles.userInfoWrapper}>
+          <ThemedText style={styles.usernameTextStyle}>
+            Welcome, {userDetails?.username}!
+          </ThemedText>
+          <ThemedText style={styles.userStatsStyle}>
+            Games: {userDetails?.gamesPlayed || 0} | W: {userDetails?.wins || 0}{' '}
+            | L: {userDetails?.losses || 0} | T: {userDetails?.ties || 0}
+          </ThemedText>
+        </View>
+
+        <View style={styles.scoreBoardWrapper}>
+          <View style={styles.scoreItemWrapper}>
+            <ThemedText style={styles.scoreLabelStyle}>You (X)</ThemedText>
+            <RollingNumber
+              style={[styles.scoreStyle, { color: successColor }]}
+              fontSize={FONT_SIZES.xlarge}
+              value={userDetails?.wins || 0}
+            />
+          </View>
+
+          <View style={styles.scoreItemWrapper}>
+            <ThemedText style={styles.scoreLabelStyle}>Ties</ThemedText>
+            <RollingNumber
+              style={styles.scoreStyle}
+              fontSize={FONT_SIZES.xlarge}
+              value={userDetails?.ties || 0}
+            />
+          </View>
+
+          <View style={styles.scoreItemWrapper}>
+            <ThemedText style={styles.scoreLabelStyle}>AI (O)</ThemedText>
+
+            <RollingNumber
+              style={[styles.scoreStyle, { color: primaryColor }]}
+              fontSize={FONT_SIZES.xlarge}
+              value={userDetails?.losses || 0}
+            />
+          </View>
+        </View>
+
+        <ThemedText
+          style={[styles.statusTextStyle, { color: getStatusColor() }]}>
+          {getStatusText()}
         </ThemedText>
-        <ThemedText style={styles.userStatsStyle}>
-          Games: {userDetails?.gamesPlayed || 0} | W: {userDetails?.wins || 0} |
-          L: {userDetails?.losses || 0} | T: {userDetails?.ties || 0}
-        </ThemedText>
-      </View>
 
-      <View style={styles.scoreBoardWrapper}>
-        <View style={styles.scoreItemWrapper}>
-          <ThemedText style={styles.scoreLabelStyle}>You (X)</ThemedText>
-          <RollingNumber
-            style={[styles.scoreStyle, { color: successColor }]}
-            fontSize={FONT_SIZES.xlarge}
-            value={userDetails?.wins || 0}
-          />
-        </View>
+        {gameState.gameOver && userSettings?.autoResetBoard && (
+          <Animated.View
+            entering={FadeIn.duration(300)}
+            exiting={FadeOut.duration(300)}
+            layout={LinearTransition}>
+            <ThemedText style={styles.autoResetTextStyle}>
+              New game starting in{' '}
+              {Math.ceil((userSettings?.resetDelay || 3000) / 1000)} seconds...
+            </ThemedText>
+          </Animated.View>
+        )}
 
-        <View style={styles.scoreItemWrapper}>
-          <ThemedText style={styles.scoreLabelStyle}>Ties</ThemedText>
-          <RollingNumber
-            style={styles.scoreStyle}
-            fontSize={FONT_SIZES.xlarge}
-            value={userDetails?.ties || 0}
-          />
-        </View>
+        <GameBoard
+          board={gameState.board}
+          onCellPress={handleCellPress}
+          disabled={gameState.currentPlayer !== 'X' || gameState.gameOver}
+          winner={gameState.winner}
+          boardSize={boardSize}
+        />
 
-        <View style={styles.scoreItemWrapper}>
-          <ThemedText style={styles.scoreLabelStyle}>AI (O)</ThemedText>
-
-          <RollingNumber
-            style={[styles.scoreStyle, { color: primaryColor }]}
-            fontSize={FONT_SIZES.xlarge}
-            value={userDetails?.losses || 0}
-          />
-        </View>
-      </View>
-
-      <ThemedText style={[styles.statusTextStyle, { color: getStatusColor() }]}>
-        {getStatusText()}
-      </ThemedText>
-
-      {gameState.gameOver && userSettings?.autoResetBoard && (
         <Animated.View
+          style={styles.boardSizeContainer}
           entering={FadeIn.duration(300)}
           exiting={FadeOut.duration(300)}
           layout={LinearTransition}>
-          <ThemedText style={styles.autoResetTextStyle}>
-            New game starting in{' '}
-            {Math.ceil((userSettings?.resetDelay || 3000) / 1000)} seconds...
+          <ThemedText style={styles.boardSizeLabelStyle}>
+            Board Size:
           </ThemedText>
-        </Animated.View>
-      )}
-
-      <GameBoard
-        board={gameState.board}
-        onCellPress={handleCellPress}
-        disabled={gameState.currentPlayer !== 'X' || gameState.gameOver}
-        winner={gameState.winner}
-      />
-
-      <Animated.View
-        style={styles.difficultyContainer}
-        entering={FadeIn.duration(300)}
-        exiting={FadeOut.duration(300)}
-        layout={LinearTransition}>
-        <ThemedText style={styles.difficultyLabelStyle}>Difficulty:</ThemedText>
-        <View style={styles.difficultyButtonsWrapper}>
-          {(['easy', 'medium', 'hard'] as const).map(level => (
-            <TouchableOpacity
-              key={level}
-              style={[
-                styles.difficultyButtonStyle,
-                difficulty === level && styles.selectedDifficultyWrapper,
-              ]}
-              onPress={() => setDifficulty(level)}>
-              <ThemedText
+          <ScrollView
+            bounces={false}
+            showsHorizontalScrollIndicator={false}
+            horizontal
+            style={styles.boardSizeButtonsWrapper}>
+            {[3, 4, 5].map(size => (
+              <TouchableOpacity
+                key={size}
                 style={[
-                  styles.difficultyButtonTextStyle,
-                  difficulty === level && styles.selectedDifficultyTextStyle,
-                ]}>
-                {level.charAt(0).toUpperCase() + level.slice(1)}
-              </ThemedText>
-            </TouchableOpacity>
-          ))}
-        </View>
-      </Animated.View>
+                  styles.boardSizeButtonStyle,
+                  boardSize === size && styles.selectedBoardSizeWrapper,
+                ]}
+                onPress={() => handleBoardSizeChange(size)}>
+                <ThemedText
+                  style={[
+                    styles.boardSizeButtonTextStyle,
+                    boardSize === size && styles.selectedBoardSizeTextStyle,
+                  ]}>
+                  {size}x{size}
+                </ThemedText>
+              </TouchableOpacity>
+            ))}
+          </ScrollView>
+        </Animated.View>
 
-      <Animated.View
-        style={styles.actionButtonsWrapper}
-        entering={FadeIn.duration(300)}
-        exiting={FadeOut.duration(300)}
-        layout={LinearTransition}>
-        <GameButton
-          title="New Game"
-          onPress={handleNewGame}
-          variant="primary"
-          style={styles.actionButtonStyle}
-        />
-        <TouchableOpacity
-          style={styles.resetButtonWrapper}
-          onPress={resetAllScores}>
-          <RotateCcw size={responsiveScale(20)} color={textColor} />
-        </TouchableOpacity>
-      </Animated.View>
+        <Animated.View
+          style={styles.difficultyContainer}
+          entering={FadeIn.duration(300)}
+          exiting={FadeOut.duration(300)}
+          layout={LinearTransition}>
+          <ThemedText style={styles.difficultyLabelStyle}>
+            Difficulty:
+          </ThemedText>
+          <View style={styles.difficultyButtonsWrapper}>
+            {(['easy', 'medium', 'hard'] as const).map(level => (
+              <TouchableOpacity
+                key={level}
+                style={[
+                  styles.difficultyButtonStyle,
+                  difficulty === level && styles.selectedDifficultyWrapper,
+                ]}
+                onPress={() => setDifficulty(level)}>
+                <ThemedText
+                  style={[
+                    styles.difficultyButtonTextStyle,
+                    difficulty === level && styles.selectedDifficultyTextStyle,
+                  ]}>
+                  {level.charAt(0).toUpperCase() + level.slice(1)}
+                </ThemedText>
+              </TouchableOpacity>
+            ))}
+          </View>
+        </Animated.View>
+
+        <Animated.View
+          style={styles.actionButtonsWrapper}
+          entering={FadeIn.duration(300)}
+          exiting={FadeOut.duration(300)}
+          layout={LinearTransition}>
+          <GameButton
+            title="New Game"
+            onPress={() => handleNewGame()}
+            variant="primary"
+            style={styles.actionButtonStyle}
+          />
+          <TouchableOpacity
+            style={styles.resetButtonWrapper}
+            onPress={resetAllScores}>
+            <RotateCcw size={responsiveScale(20)} color={textColor} />
+          </TouchableOpacity>
+        </Animated.View>
+      </ScrollView>
     </ThemedView>
   );
 }
@@ -560,7 +618,13 @@ export default function GameScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
+  },
+  scrollContainer: {
+    flex: 1,
     paddingHorizontal: SPACING.md,
+  },
+  scrollContentContainer: {
+    paddingBottom: SPACING.xl,
   },
   headerButtonWrapper: {
     paddingHorizontal: SPACING.sm,
@@ -614,17 +678,47 @@ const styles = StyleSheet.create({
     fontSize: FONT_SIZES.large,
     fontWeight: '600',
     textAlign: 'center',
-    paddingBottom: SPACING.md,
   },
   autoResetTextStyle: {
     fontSize: FONT_SIZES.small,
     textAlign: 'center',
     opacity: 0.7,
-    paddingBottom: SPACING.lg,
+    paddingBottom: SPACING.md,
+  },
+  boardSizeContainer: {
+    alignItems: 'center',
+    paddingVertical: SPACING.md,
+  },
+  boardSizeLabelStyle: {
+    fontSize: FONT_SIZES.medium,
+    fontWeight: '600',
+    paddingBottom: SPACING.sm,
+  },
+  boardSizeButtonsWrapper: {
+    flexDirection: 'row',
+  },
+  boardSizeButtonStyle: {
+    paddingHorizontal: SPACING.md,
+    paddingVertical: SPACING.sm,
+    borderRadius: responsiveScale(12),
+    borderWidth: 1,
+    borderColor: COLORS.neutral[300],
+    marginHorizontal: SPACING.sm,
+  },
+  selectedBoardSizeWrapper: {
+    backgroundColor: COLORS.primary[500],
+    borderColor: COLORS.primary[500],
+  },
+  boardSizeButtonTextStyle: {
+    fontSize: FONT_SIZES.small,
+    fontWeight: '600',
+  },
+  selectedBoardSizeTextStyle: {
+    color: COLORS.white,
   },
   difficultyContainer: {
     alignItems: 'center',
-    paddingVertical: SPACING.lg,
+    paddingVertical: SPACING.sm,
   },
   difficultyLabelStyle: {
     fontSize: FONT_SIZES.medium,

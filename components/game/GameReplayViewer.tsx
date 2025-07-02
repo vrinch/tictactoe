@@ -32,6 +32,7 @@ import {
 
 import { ThemedText } from '@/components/common';
 import { COLORS } from '@/constants/Colors';
+import { SCREEN_WIDTH } from '@/constants/config';
 import { FONT_SIZES, responsiveScale, SPACING } from '@/constants/theme';
 import { useThemeColor } from '@/hooks/useThemeColor';
 import { deserializeBoardState, replayGame } from '@/utils/gameLogic';
@@ -59,6 +60,7 @@ interface GameReplayViewerProps {
     difficulty: string;
     boardState: string;
     gameDuration: number;
+    boardSize?: number;
   };
   onClose?: () => void;
 }
@@ -78,6 +80,7 @@ export const GameReplayViewer = forwardRef<
   const [currentGame, setCurrentGame] = useState<
     GameReplayViewerProps['game'] | null
   >(null);
+  const [detectedBoardSize, setDetectedBoardSize] = useState<number>(3);
 
   const playTimer = useRef<NodeJS.Timeout | null>(null);
 
@@ -90,13 +93,11 @@ export const GameReplayViewer = forwardRef<
   const errorColor = useThemeColor({}, 'error');
   const warningColor = useThemeColor({}, 'warning');
 
-  const snapPoints = useMemo(() => ['70%'], []);
+  const snapPoints = useMemo(() => ['80%'], []);
 
   // Handle bottom sheet state changes
   const handleSheetChanges = useCallback(
     (index: number) => {
-      // console.log('GameReplayViewer sheet changed to index:', index);
-
       if (index === -1) {
         // Clean up when sheet closes
         setIsPlaying(false);
@@ -104,6 +105,7 @@ export const GameReplayViewer = forwardRef<
         setCurrentGame(null);
         setBoardStates([]);
         setGameData(null);
+        setDetectedBoardSize(3);
         if (playTimer.current) {
           clearTimeout(playTimer.current);
         }
@@ -129,7 +131,6 @@ export const GameReplayViewer = forwardRef<
   // Expose open/close methods via ref
   useImperativeHandle(ref, () => ({
     open: (gameToReplay: GameReplayViewerProps['game']) => {
-      // console.log('Opening GameReplayViewer with game:', gameToReplay?.id);
       setCurrentGame(gameToReplay);
 
       // Delay expansion to ensure state is set
@@ -142,22 +143,37 @@ export const GameReplayViewer = forwardRef<
     },
   }));
 
+  // Detect board size from game data
+  const detectBoardSize = (board: GameBoard): number => {
+    const totalCells = board.length;
+    const size = Math.sqrt(totalCells);
+    return Math.floor(size);
+  };
+
   // Parse game data and generate board states when game loads
   useEffect(() => {
     if (currentGame?.boardState) {
-      // console.log('Initializing game data for:', currentGame.id);
       try {
         const data = deserializeBoardState(currentGame.boardState);
         setGameData(data);
-        const states = replayGame(data.moves);
+
+        // Detect board size from the final board or use provided boardSize
+        let boardSize = currentGame.boardSize || 3;
+        if (data.finalBoard && data.finalBoard.length > 0) {
+          boardSize = detectBoardSize(data.finalBoard);
+        }
+        setDetectedBoardSize(boardSize);
+
+        // Generate board states with the detected size
+        const states = replayGame(data.moves, boardSize);
         setBoardStates(states);
         setCurrentStep(0);
         setIsPlaying(false);
-        // console.log('Game data initialized, board states:', states.length);
       } catch (error) {
         console.error('Error parsing game data:', error);
         setBoardStates([]);
         setGameData(null);
+        setDetectedBoardSize(3);
       }
     }
   }, [currentGame]);
@@ -343,6 +359,13 @@ export const GameReplayViewer = forwardRef<
               </View>
 
               <View style={styles.infoItemWrapper}>
+                <ThemedText style={styles.infoLabelStyle}>Board</ThemedText>
+                <ThemedText style={styles.infoValueStyle}>
+                  {detectedBoardSize}×{detectedBoardSize}
+                </ThemedText>
+              </View>
+
+              <View style={styles.infoItemWrapper}>
                 <ThemedText style={styles.infoLabelStyle}>
                   Difficulty
                 </ThemedText>
@@ -357,7 +380,6 @@ export const GameReplayViewer = forwardRef<
 
               <View style={styles.infoItemWrapper}>
                 <ThemedText style={styles.infoLabelStyle}>Moves</ThemedText>
-
                 <ThemedText style={styles.infoValueStyle}>
                   {currentGame.moves}
                 </ThemedText>
@@ -398,6 +420,7 @@ export const GameReplayViewer = forwardRef<
               <GameReplayBoard
                 board={boardStates[currentStep] || []}
                 currentStep={currentStep}
+                boardSize={detectedBoardSize}
               />
             </View>
 
@@ -497,27 +520,64 @@ export const GameReplayViewer = forwardRef<
 
 GameReplayViewer.displayName = 'GameReplayViewer';
 
-// Game board component for replaying moves
+// Game board component for replaying moves with responsive sizing
 const GameReplayBoard: FC<{
   board: GameBoard;
   currentStep: number;
-}> = ({ board, currentStep }) => {
+  boardSize: number;
+}> = ({ board, currentStep, boardSize }) => {
   const borderColor = useThemeColor({}, 'border');
   const cardColor = useThemeColor({}, 'card');
+  const successColor = useThemeColor({}, 'success');
+
+  // Calculate responsive cell size
+  const maxBoardWidth = SCREEN_WIDTH * 0.8; // 80% of screen width
+  const cellMargin = responsiveScale(4);
+  const totalMargins = cellMargin * 2 * boardSize;
+  const availableWidth = maxBoardWidth - totalMargins;
+  const cellSize = Math.floor(availableWidth / boardSize);
+
+  // Calculate font size based on cell size
+  const fontSize = Math.max(Math.floor(cellSize * 0.4), 14);
+
+  // Calculate total board width
+  const totalBoardWidth = cellSize * boardSize + totalMargins;
 
   return (
-    <View style={replayStyles.boardWrapper}>
+    <View
+      style={[
+        replayStyles.boardWrapper,
+        {
+          width: totalBoardWidth,
+          alignSelf: 'center',
+        },
+      ]}>
       {board.map((cell, index) => (
         <View
-          key={index}
+          key={`replay-${boardSize}-${index}`}
           style={[
             replayStyles.cellWrapper,
             {
+              width: cellSize,
+              height: cellSize,
               backgroundColor: cardColor,
               borderColor,
+              margin: cellMargin / 2,
             },
           ]}>
-          <ThemedText style={replayStyles.cellTextStyle}>
+          <ThemedText
+            style={[
+              replayStyles.cellTextStyle,
+              {
+                fontSize,
+                color:
+                  cell === 'X'
+                    ? successColor
+                    : cell === 'O'
+                      ? COLORS.primary[500]
+                      : 'transparent',
+              },
+            ]}>
             {cell || ''}
           </ThemedText>
         </View>
@@ -530,22 +590,18 @@ const replayStyles = StyleSheet.create({
   boardWrapper: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    width: responsiveScale(240),
     justifyContent: 'center',
+    alignItems: 'center',
   },
   cellWrapper: {
-    width: responsiveScale(70),
-    height: responsiveScale(70),
     justifyContent: 'center',
     alignItems: 'center',
     borderWidth: 2,
-    borderRadius: responsiveScale(12),
-    marginHorizontal: responsiveScale(2),
-    marginVertical: responsiveScale(2),
+    borderRadius: responsiveScale(8),
   },
   cellTextStyle: {
-    fontSize: responsiveScale(28),
     fontWeight: 'bold',
+    textAlign: 'center',
   },
 });
 
@@ -596,10 +652,12 @@ const styles = StyleSheet.create({
     paddingHorizontal: SPACING.md,
     paddingVertical: SPACING.md,
     borderRadius: responsiveScale(12),
+    flexWrap: 'wrap',
   },
   infoItemWrapper: {
     alignItems: 'center',
     gap: SPACING.xs,
+    minWidth: responsiveScale(60),
   },
   infoLabelStyle: {
     fontSize: FONT_SIZES.small,
