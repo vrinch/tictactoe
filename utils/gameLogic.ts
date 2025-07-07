@@ -1,7 +1,12 @@
-import { BOARD_SIZE } from '../constants/config';
+import { BOARD_SIZE } from '@/constants/config';
 import { Board, Difficulty, GameBoard, Player } from './types';
 
-// Advanced LRU Cache Implementation
+// Set up board size limits - minimum matches our config, maximum is 20x20
+const DEFAULT_BOARD_SIZE = BOARD_SIZE;
+const MIN_BOARD_SIZE = BOARD_SIZE;
+const MAX_BOARD_SIZE = 20;
+
+// Smart cache that remembers recently used items and forgets old ones
 class LRUCache<K, V> {
   private capacity: number;
   private cache = new Map<K, V>();
@@ -13,7 +18,7 @@ class LRUCache<K, V> {
 
   get(key: K): V | undefined {
     if (this.cache.has(key)) {
-      // Move to end (most recently used)
+      // Move this item to the end - it's now the most recently used
       this.usage.delete(key);
       this.usage.add(key);
       return this.cache.get(key);
@@ -23,22 +28,22 @@ class LRUCache<K, V> {
 
   set(key: K, value: V): void {
     if (this.cache.has(key)) {
-      // Update existing - move to end
+      // Item already exists - just update it and mark as recently used
       this.usage.delete(key);
       this.usage.add(key);
       this.cache.set(key, value);
       return;
     }
 
-    // Check capacity
+    // Check if we need to make room for new item
     if (this.cache.size >= this.capacity) {
-      // Remove least recently used (first in usage set)
+      // Remove the oldest item (first in usage set)
       const lru = this.usage.values().next().value;
       this.usage.delete(lru);
       this.cache.delete(lru);
     }
 
-    // Add new entry
+    // Add the new item
     this.cache.set(key, value);
     this.usage.add(key);
   }
@@ -63,7 +68,7 @@ class LRUCache<K, V> {
   private hits = 0;
   private misses = 0;
 
-  // Override get to track hit rate
+  // Version of get() that tracks how often we find vs miss items
   getWithStats(key: K): V | undefined {
     const result = this.get(key);
     if (result !== undefined) {
@@ -75,45 +80,50 @@ class LRUCache<K, V> {
   }
 }
 
-// AI Configuration - All magic numbers documented and configurable
+// Calculate win/loss scores based on board size - bigger boards need bigger scores
+const getDynamicScores = (size: number) => {
+  const baseScore = size * size * 10; // 10x multiplier for breathing room
+  return {
+    WIN_SCORE: baseScore,
+    LOSS_SCORE: -baseScore,
+    TIE_SCORE: 0,
+  };
+};
+
+// All the AI's decision-making parameters in one place
 const AI_CONFIG = {
-  // Scoring system
-  WIN_SCORE: 1000, // Score for a winning position
-  LOSS_SCORE: -1000, // Score for a losing position
-  TIE_SCORE: 0, // Score for a tie game
+  // How much the AI values different board positions
+  CENTER_BONUS: 30,
+  CORNER_BONUS: 20,
+  EDGE_BONUS: 10,
 
-  // Move prioritization
-  CENTER_BONUS: 30, // Priority boost for center positions
-  CORNER_BONUS: 20, // Priority boost for corner positions
-  EDGE_BONUS: 10, // Priority boost for edge positions
+  // How the AI evaluates potential winning lines
+  LINE_SCORE_BASE: 10,
+  FORK_BONUS: 50, // Creating multiple winning threats
+  BLOCK_BONUS: 40, // Blocking opponent's winning threats
 
-  // Line evaluation
-  LINE_SCORE_BASE: 10, // Base multiplier for line scores
-  FORK_BONUS: 50, // Bonus for creating multiple threats
-  BLOCK_BONUS: 40, // Bonus for blocking opponent threats
+  // How long the AI can think about its move
+  TIME_LIMIT_MS: 1000,
+  MIN_SEARCH_DEPTH: 1,
+  MAX_SEARCH_DEPTH: 12,
 
-  // Search configuration
-  TIME_LIMIT_MS: 1000, // Time limit for hard AI thinking
-  MIN_SEARCH_DEPTH: 1, // Minimum search depth
-  MAX_SEARCH_DEPTH: 12, // Maximum search depth
-
-  // Cache configuration
+  // Memory limits for different board sizes
   CACHE_SIZE: {
-    SMALL_BOARD: 15000, // 3x3 boards
-    MEDIUM_BOARD: 8000, // 4x4-6x6 boards
-    LARGE_BOARD: 2000, // 7x7+ boards
+    SMALL_BOARD: 15000,
+    MEDIUM_BOARD: 8000,
+    LARGE_BOARD: 2000,
   },
 
-  // Performance thresholds
-  LARGE_BOARD_THRESHOLD: 7, // When to switch to simplified strategy
-  ENDGAME_THRESHOLD: 8, // When to search to completion
+  // When to switch strategies
+  LARGE_BOARD_THRESHOLD: 7,
+  ENDGAME_THRESHOLD: 8,
 
-  // AI behavior tuning
-  EASY_SMART_PERCENTAGE: 0.25, // How often easy AI plays optimally
-  MEDIUM_RANDOM_PERCENTAGE: 0.15, // How often medium AI plays randomly
+  // How much randomness to add to easy/medium AI
+  EASY_SMART_PERCENTAGE: 0.25,
+  MEDIUM_RANDOM_PERCENTAGE: 0.15,
 } as const;
 
-// Performance configuration with dynamic depth limits
+// How deep the AI can think for different board sizes
 const PERFORMANCE_CONFIG = {
   MAX_MINIMAX_DEPTH: {
     3: 9, // 3x3 can search complete game tree
@@ -125,19 +135,19 @@ const PERFORMANCE_CONFIG = {
     9: 2,
     10: 2,
   },
-  ENABLE_TRANSPOSITION_TABLE: true,
-  ENABLE_ITERATIVE_DEEPENING: true,
-  ENABLE_MOVE_ORDERING: true,
+  ENABLE_TRANSPOSITION_TABLE: true, // Remember positions we've seen before
+  ENABLE_ITERATIVE_DEEPENING: true, // Gradually think deeper
+  ENABLE_MOVE_ORDERING: true, // Try best moves first
 } as const;
 
-// Smart cache system with LRU eviction
+// Choose cache size based on board size - smaller boards can afford bigger caches
 const getCacheSize = (size: number): number => {
-  if (size <= 3) return AI_CONFIG.CACHE_SIZE.SMALL_BOARD;
+  if (size <= DEFAULT_BOARD_SIZE) return AI_CONFIG.CACHE_SIZE.SMALL_BOARD;
   if (size <= 6) return AI_CONFIG.CACHE_SIZE.MEDIUM_BOARD;
   return AI_CONFIG.CACHE_SIZE.LARGE_BOARD;
 };
 
-// Initialize caches with appropriate sizes
+// Global caches that remember winning patterns and board evaluations
 const winningCombinationsCache = new Map<number, number[][]>();
 let boardEvaluationCache: LRUCache<string, number>;
 let transpositionTable: LRUCache<
@@ -145,8 +155,8 @@ let transpositionTable: LRUCache<
   { score: number; depth: number; flag: 'exact' | 'upper' | 'lower' }
 >;
 
-// Initialize caches for default board size
-const initializeCaches = (size: number = BOARD_SIZE) => {
+// Set up caches for the given board size
+const initializeCaches = (size: number = DEFAULT_BOARD_SIZE) => {
   const cacheSize = getCacheSize(size);
   boardEvaluationCache = new LRUCache<string, number>(cacheSize);
   transpositionTable = new LRUCache<
@@ -155,14 +165,18 @@ const initializeCaches = (size: number = BOARD_SIZE) => {
   >(cacheSize);
 };
 
-// Initialize with default size
+// Start with default size
 initializeCaches();
 
-// Input validation utilities
+// Make sure inputs are valid before using them
 const validateBoardSize = (size: number): void => {
-  if (!Number.isInteger(size) || size < 3 || size > 20) {
+  if (
+    !Number.isInteger(size) ||
+    size < MIN_BOARD_SIZE ||
+    size > MAX_BOARD_SIZE
+  ) {
     throw new Error(
-      `Invalid board size: ${size}. Must be an integer between 3 and 20.`,
+      `Invalid board size: ${size}. Must be an integer between ${MIN_BOARD_SIZE} and ${MAX_BOARD_SIZE}.`,
     );
   }
 };
@@ -182,7 +196,66 @@ const validatePlayer = (player: Player): void => {
   }
 };
 
-// Generate winning combinations with caching and validation
+// Different directions to check for winning lines
+const DIRECTION_VECTORS = [
+  [1, 0], // horizontal (right)
+  [0, 1], // vertical (down)
+  [1, 1], // diagonal down-right
+  [1, -1], // diagonal down-left
+] as const;
+
+// Check if there's a winning line starting from a position in a given direction
+const checkLineFromPosition = (
+  board: GameBoard,
+  startRow: number,
+  startCol: number,
+  dx: number,
+  dy: number,
+  size: number,
+): Player | null => {
+  const startPos = startRow * size + startCol;
+  const player = board[startPos];
+
+  if (!player) return null;
+
+  // Make sure the line fits within the board
+  const endRow = startRow + (size - 1) * dx;
+  const endCol = startCol + (size - 1) * dy;
+
+  if (endRow < 0 || endRow >= size || endCol < 0 || endCol >= size) {
+    return null;
+  }
+
+  // Check every position in the line
+  for (let i = 0; i < size; i++) {
+    const row = startRow + i * dx;
+    const col = startCol + i * dy;
+    const pos = row * size + col;
+
+    if (board[pos] !== player) {
+      return null; // Found a different player or empty space
+    }
+  }
+
+  return player;
+};
+
+// Check for winners using direction vectors (efficient for large boards)
+const checkWinnerDynamic = (board: GameBoard, size: number): Player | null => {
+  for (let row = 0; row < size; row++) {
+    for (let col = 0; col < size; col++) {
+      for (const [dx, dy] of DIRECTION_VECTORS) {
+        const winner = checkLineFromPosition(board, row, col, dx, dy, size);
+        if (winner) {
+          return winner;
+        }
+      }
+    }
+  }
+  return null;
+};
+
+// Generate all possible winning combinations for a board size
 export const getWinningCombinations = (size: number): number[][] => {
   validateBoardSize(size);
 
@@ -192,7 +265,7 @@ export const getWinningCombinations = (size: number): number[][] => {
 
   const combinations: number[][] = [];
 
-  // Generate all rows
+  // Add all rows as winning combinations
   for (let row = 0; row < size; row++) {
     const rowCombination: number[] = [];
     for (let col = 0; col < size; col++) {
@@ -201,7 +274,7 @@ export const getWinningCombinations = (size: number): number[][] => {
     combinations.push(rowCombination);
   }
 
-  // Generate all columns
+  // Add all columns as winning combinations
   for (let col = 0; col < size; col++) {
     const colCombination: number[] = [];
     for (let row = 0; row < size; row++) {
@@ -210,14 +283,14 @@ export const getWinningCombinations = (size: number): number[][] => {
     combinations.push(colCombination);
   }
 
-  // Generate main diagonal (top-left to bottom-right)
+  // Add main diagonal (top-left to bottom-right)
   const mainDiagonal: number[] = [];
   for (let i = 0; i < size; i++) {
     mainDiagonal.push(i * size + i);
   }
   combinations.push(mainDiagonal);
 
-  // Generate anti-diagonal (top-right to bottom-left)
+  // Add anti-diagonal (top-right to bottom-left)
   const antiDiagonal: number[] = [];
   for (let i = 0; i < size; i++) {
     antiDiagonal.push(i * size + (size - 1 - i));
@@ -228,17 +301,19 @@ export const getWinningCombinations = (size: number): number[][] => {
   return combinations;
 };
 
-// Create empty board with validation
-export const createEmptyBoard = (size: number = BOARD_SIZE): GameBoard => {
+// Create a new empty board filled with nulls
+export const createEmptyBoard = (
+  size: number = DEFAULT_BOARD_SIZE,
+): GameBoard => {
   validateBoardSize(size);
   const cellCount = size * size;
   return Array(cellCount).fill(null);
 };
 
-// Enhanced winner checking with early termination
+// Check who won the game, or if it's a tie
 export const checkWinner = (
   board: GameBoard,
-  size: number = BOARD_SIZE,
+  size: number = DEFAULT_BOARD_SIZE,
 ): Player | 'tie' | null => {
   validateBoardSize(size);
 
@@ -248,17 +323,28 @@ export const checkWinner = (
     );
   }
 
-  const winningCombinations = getWinningCombinations(size);
+  let winner: Player | null;
 
-  // Check each winning combination
-  for (const combination of winningCombinations) {
-    const firstCell = board[combination[0]];
-    if (firstCell && combination.every(index => board[index] === firstCell)) {
-      return firstCell;
+  // Use dynamic checking for large boards (faster)
+  if (size > 5) {
+    winner = checkWinnerDynamic(board, size);
+  } else {
+    // Use pre-computed combinations for small boards
+    const winningCombinations = getWinningCombinations(size);
+    winner = null;
+
+    for (const combination of winningCombinations) {
+      const firstCell = board[combination[0]];
+      if (firstCell && combination.every(index => board[index] === firstCell)) {
+        winner = firstCell;
+        break;
+      }
     }
   }
 
-  // Check for tie - all cells filled
+  if (winner) return winner;
+
+  // Check if board is full (tie game)
   if (board.every(cell => cell !== null)) {
     return 'tie';
   }
@@ -266,7 +352,7 @@ export const checkWinner = (
   return null;
 };
 
-// Optimized available moves calculation
+// Find all empty positions where a player can move
 export const getAvailableMoves = (board: GameBoard): number[] => {
   const moves: number[] = [];
   for (let i = 0; i < board.length; i++) {
@@ -277,7 +363,7 @@ export const getAvailableMoves = (board: GameBoard): number[] => {
   return moves;
 };
 
-// Robust move making with comprehensive validation
+// Make a move on the board and return the new board state
 export const makeMove = (
   board: GameBoard,
   position: number,
@@ -299,7 +385,7 @@ export const makeMove = (
   return newBoard;
 };
 
-// Enhanced board hash for better cache performance
+// Create a unique hash for a board state (for caching)
 const createBoardHash = (
   board: GameBoard,
   depth: number,
@@ -311,7 +397,7 @@ const createBoardHash = (
   return `${boardStr}_${depth}_${isMaximizing}_${alpha}_${beta}`;
 };
 
-// Get strategic positions based on board size
+// Get strategically important positions for a given board size
 const getStrategicPositions = (size: number) => {
   const positions = {
     center: [] as number[],
@@ -321,7 +407,7 @@ const getStrategicPositions = (size: number) => {
 
   const mid = Math.floor(size / 2);
 
-  // Calculate center positions
+  // Find center positions
   if (size % 2 === 1) {
     // Odd size - single center
     positions.center.push(mid * size + mid);
@@ -335,15 +421,10 @@ const getStrategicPositions = (size: number) => {
     );
   }
 
-  // Calculate corners
-  positions.corners = [
-    0, // Top-left
-    size - 1, // Top-right
-    size * (size - 1), // Bottom-left
-    size * size - 1, // Bottom-right
-  ];
+  // Find corner positions
+  positions.corners = [0, size - 1, size * (size - 1), size * size - 1];
 
-  // Calculate edges (excluding corners)
+  // Find edge positions (excluding corners)
   for (let i = 1; i < size - 1; i++) {
     positions.edges.push(i); // Top edge
     positions.edges.push(i * size); // Left edge
@@ -354,7 +435,7 @@ const getStrategicPositions = (size: number) => {
   return positions;
 };
 
-// Enhanced line evaluation with fork detection
+// Evaluate how good a potential winning line is
 const evaluateLine = (
   board: GameBoard,
   combination: number[],
@@ -377,38 +458,30 @@ const evaluateLine = (
     }
   }
 
-  // Line is blocked if both players have pieces
+  // If both players have pieces in this line, it's blocked
   if (maxCount > 0 && minCount > 0) return 0;
 
-  // Calculate score based on pieces and potential
+  // Score based on how many pieces we have
   if (maxCount > 0) {
-    // Exponential scoring for pieces in a line
     let score = Math.pow(AI_CONFIG.LINE_SCORE_BASE, maxCount);
-
-    // Bonus for lines close to winning
     if (maxCount === size - 1) {
-      score += AI_CONFIG.FORK_BONUS;
+      score += AI_CONFIG.FORK_BONUS; // Almost winning
     }
-
     return score;
   }
 
   if (minCount > 0) {
-    // Negative scoring for opponent pieces
     let score = -Math.pow(AI_CONFIG.LINE_SCORE_BASE, minCount);
-
-    // Penalty for opponent close to winning
     if (minCount === size - 1) {
-      score -= AI_CONFIG.BLOCK_BONUS;
+      score -= AI_CONFIG.BLOCK_BONUS; // Need to block
     }
-
     return score;
   }
 
-  return 0; // Empty line has neutral value
+  return 0;
 };
 
-// Detect and score forks (multiple winning threats)
+// Look for fork opportunities (multiple winning threats)
 const detectForks = (
   board: GameBoard,
   player: Player,
@@ -422,7 +495,6 @@ const detectForks = (
     const winningCombinations = getWinningCombinations(size);
     let threats = 0;
 
-    // Count how many winning lines this move creates
     for (const combination of winningCombinations) {
       if (!combination.includes(move)) continue;
 
@@ -437,13 +509,13 @@ const detectForks = (
         }
       }
 
-      // A threat is created if we have size-1 pieces and 1 empty
+      // This move creates a winning threat
       if (playerCount === size - 1 && emptyCount === 1) {
         threats++;
       }
     }
 
-    // Multiple threats = fork
+    // Fork = multiple threats from one move
     if (threats >= 2) {
       forkScore += AI_CONFIG.FORK_BONUS * threats;
     }
@@ -452,7 +524,7 @@ const detectForks = (
   return forkScore;
 };
 
-// Advanced board evaluation with multiple heuristics
+// Evaluate how good a board position is overall
 const evaluateBoard = (
   board: GameBoard,
   size: number,
@@ -460,38 +532,39 @@ const evaluateBoard = (
 ): number => {
   const boardHash = createBoardHash(board, 0, true);
 
-  // Check cache first
+  // Check if we've already evaluated this position
   const cached = boardEvaluationCache.getWithStats(boardHash);
   if (cached !== undefined) {
     return cached;
   }
 
   const winner = checkWinner(board, size);
+  const scores = getDynamicScores(size);
 
-  // Terminal positions
+  // Handle game-ending positions
   if (winner === maximizingPlayer) {
-    boardEvaluationCache.set(boardHash, AI_CONFIG.WIN_SCORE);
-    return AI_CONFIG.WIN_SCORE;
+    boardEvaluationCache.set(boardHash, scores.WIN_SCORE);
+    return scores.WIN_SCORE;
   }
   if (winner === (maximizingPlayer === 'O' ? 'X' : 'O')) {
-    boardEvaluationCache.set(boardHash, AI_CONFIG.LOSS_SCORE);
-    return AI_CONFIG.LOSS_SCORE;
+    boardEvaluationCache.set(boardHash, scores.LOSS_SCORE);
+    return scores.LOSS_SCORE;
   }
   if (winner === 'tie') {
-    boardEvaluationCache.set(boardHash, AI_CONFIG.TIE_SCORE);
-    return AI_CONFIG.TIE_SCORE;
+    boardEvaluationCache.set(boardHash, scores.TIE_SCORE);
+    return scores.TIE_SCORE;
   }
 
   let score = 0;
   const winningCombinations = getWinningCombinations(size);
   const strategicPositions = getStrategicPositions(size);
 
-  // Evaluate all winning lines
+  // Score all possible winning lines
   for (const combination of winningCombinations) {
     score += evaluateLine(board, combination, maximizingPlayer, size);
   }
 
-  // Strategic position bonuses
+  // Give bonus points for controlling strategic positions
   for (const pos of strategicPositions.center) {
     if (board[pos] === maximizingPlayer) score += AI_CONFIG.CENTER_BONUS;
     if (board[pos] === (maximizingPlayer === 'O' ? 'X' : 'O'))
@@ -510,7 +583,7 @@ const evaluateBoard = (
       score -= AI_CONFIG.EDGE_BONUS;
   }
 
-  // Fork detection for advanced play
+  // Look for fork opportunities on larger boards
   if (size >= 4) {
     score += detectForks(board, maximizingPlayer, size);
     score -= detectForks(board, maximizingPlayer === 'O' ? 'X' : 'O', size);
@@ -520,7 +593,7 @@ const evaluateBoard = (
   return score;
 };
 
-// Enhanced move ordering with game-specific heuristics
+// Calculate how good a move is for ordering purposes
 const getAdvancedMovePriority = (
   position: number,
   board: GameBoard,
@@ -530,7 +603,7 @@ const getAdvancedMovePriority = (
   let priority = 0;
   const strategicPositions = getStrategicPositions(size);
 
-  // Base positional value
+  // Give base priority based on position type
   if (strategicPositions.center.includes(position)) {
     priority += AI_CONFIG.CENTER_BONUS;
   } else if (strategicPositions.corners.includes(position)) {
@@ -539,7 +612,7 @@ const getAdvancedMovePriority = (
     priority += AI_CONFIG.EDGE_BONUS;
   }
 
-  // Check if this move creates immediate threats
+  // Check if this move creates threats or blocks opponent
   const testBoard = makeMove(board, position, player);
   const winningCombinations = getWinningCombinations(size);
   let threats = 0;
@@ -562,27 +635,21 @@ const getAdvancedMovePriority = (
       }
     }
 
-    // Immediate win
     if (playerCount === size) {
-      priority += 10000; // Highest priority
-    }
-    // Create threat (one move from win)
-    else if (playerCount === size - 1 && emptyCount === 1) {
+      priority += 10000; // Winning move
+    } else if (playerCount === size - 1 && emptyCount === 1) {
       threats++;
-    }
-    // Block opponent threat
-    else if (opponentCount === size - 1 && emptyCount === 1) {
+    } else if (opponentCount === size - 1 && emptyCount === 1) {
       blocks++;
     }
   }
 
   priority += threats * AI_CONFIG.FORK_BONUS;
   priority += blocks * AI_CONFIG.BLOCK_BONUS;
-
   return priority;
 };
 
-// Order moves for optimal alpha-beta pruning
+// Sort moves by priority to improve search efficiency
 const orderMoves = (
   availableMoves: number[],
   board: GameBoard,
@@ -596,11 +663,11 @@ const orderMoves = (
   return availableMoves.sort((a, b) => {
     const priorityA = getAdvancedMovePriority(a, board, size, player);
     const priorityB = getAdvancedMovePriority(b, board, size, player);
-    return priorityB - priorityA;
+    return priorityB - priorityA; // Higher priority first
   });
 };
 
-// Advanced minimax with all optimizations
+// The main AI thinking algorithm - minimax with alpha-beta pruning
 const minimax = (
   board: GameBoard,
   depth: number,
@@ -612,7 +679,7 @@ const minimax = (
   maxDepth?: number,
   startTime?: number,
 ): { score: number; bestMove?: number } => {
-  // Time limit check for iterative deepening
+  // Stop thinking if we're taking too long
   if (startTime && Date.now() - startTime > AI_CONFIG.TIME_LIMIT_MS) {
     return { score: evaluateBoard(board, size, maximizingPlayer) };
   }
@@ -623,8 +690,9 @@ const minimax = (
       size as keyof typeof PERFORMANCE_CONFIG.MAX_MINIMAX_DEPTH
     ] ??
     4;
+  const scores = getDynamicScores(size);
 
-  // Transposition table lookup
+  // Check if we've seen this position before
   const boardHash = createBoardHash(board, depth, isMaximizing, alpha, beta);
   if (PERFORMANCE_CONFIG.ENABLE_TRANSPOSITION_TABLE) {
     const cached = transpositionTable.get(boardHash);
@@ -639,21 +707,21 @@ const minimax = (
     }
   }
 
-  // Terminal node evaluation
+  // Check if the game is over
   const winner = checkWinner(board, size);
   if (winner === maximizingPlayer) {
-    const score = AI_CONFIG.WIN_SCORE - depth; // Prefer faster wins
+    const score = scores.WIN_SCORE - depth; // Prefer quicker wins
     return { score };
   }
   if (winner === (maximizingPlayer === 'O' ? 'X' : 'O')) {
-    const score = AI_CONFIG.LOSS_SCORE + depth; // Prefer slower losses
+    const score = scores.LOSS_SCORE + depth; // Prefer slower losses
     return { score };
   }
   if (winner === 'tie') {
-    return { score: AI_CONFIG.TIE_SCORE };
+    return { score: scores.TIE_SCORE };
   }
 
-  // Depth limit reached
+  // Stop searching if we've reached our depth limit
   if (depth >= depthLimit) {
     const score = evaluateBoard(board, size, maximizingPlayer);
     return { score };
@@ -661,7 +729,7 @@ const minimax = (
 
   const availableMoves = getAvailableMoves(board);
   if (availableMoves.length === 0) {
-    return { score: AI_CONFIG.TIE_SCORE };
+    return { score: scores.TIE_SCORE };
   }
 
   let bestMove: number | undefined;
@@ -669,6 +737,7 @@ const minimax = (
   let flag: 'exact' | 'upper' | 'lower' = 'exact';
 
   if (isMaximizing) {
+    // AI's turn - try to maximize score
     bestScore = -Infinity;
     const orderedMoves = orderMoves(
       availableMoves,
@@ -698,12 +767,14 @@ const minimax = (
 
       alpha = Math.max(alpha, result.score);
 
+      // Alpha-beta pruning - we can stop searching
       if (beta <= alpha) {
         flag = 'lower';
-        break; // Beta cutoff
+        break;
       }
     }
   } else {
+    // Opponent's turn - try to minimize score
     bestScore = Infinity;
     const minimizingPlayer = maximizingPlayer === 'O' ? 'X' : 'O';
     const orderedMoves = orderMoves(
@@ -734,26 +805,23 @@ const minimax = (
 
       beta = Math.min(beta, result.score);
 
+      // Alpha-beta pruning
       if (beta <= alpha) {
         flag = 'upper';
-        break; // Alpha cutoff
+        break;
       }
     }
   }
 
-  // Store in transposition table
+  // Remember this position for future reference
   if (PERFORMANCE_CONFIG.ENABLE_TRANSPOSITION_TABLE) {
-    transpositionTable.set(boardHash, {
-      score: bestScore,
-      depth,
-      flag,
-    });
+    transpositionTable.set(boardHash, { score: bestScore, depth, flag });
   }
 
   return { score: bestScore, bestMove };
 };
 
-// Iterative deepening for time-constrained optimal play
+// Gradually increase search depth until time runs out
 const iterativeDeepening = (
   board: GameBoard,
   availableMoves: number[],
@@ -763,8 +831,8 @@ const iterativeDeepening = (
   const startTime = Date.now();
   let bestMove = availableMoves[0];
   let depth = AI_CONFIG.MIN_SEARCH_DEPTH;
+  const scores = getDynamicScores(size);
 
-  // Ensure caches are sized for current board
   if (boardEvaluationCache.size === 0) {
     initializeCaches(size);
   }
@@ -790,14 +858,13 @@ const iterativeDeepening = (
         bestMove = result.bestMove;
       }
 
-      // If we found a winning move, no need to search deeper
-      if (result.score >= AI_CONFIG.WIN_SCORE - depth) {
+      // Found a winning move - no need to search deeper
+      if (result.score >= scores.WIN_SCORE - depth) {
         break;
       }
 
       depth++;
     } catch (error) {
-      // Time limit or other error - return best move found so far
       break;
     }
   }
@@ -805,18 +872,16 @@ const iterativeDeepening = (
   return bestMove;
 };
 
-// Enhanced Easy AI with configurable intelligence
+// Easy AI - mostly random with occasional smart moves
 const getEasyMove = (
   board: GameBoard,
   availableMoves: number[],
   size: number,
 ): number => {
-  // Sometimes play optimally to keep games interesting
   if (Math.random() < AI_CONFIG.EASY_SMART_PERCENTAGE) {
     return getMediumMove(board, availableMoves, size);
   }
 
-  // Usually random, but prefer center/corners slightly
   const strategicPositions = getStrategicPositions(size);
   const goodMoves = availableMoves.filter(
     move =>
@@ -831,13 +896,13 @@ const getEasyMove = (
   return availableMoves[Math.floor(Math.random() * availableMoves.length)];
 };
 
-// Enhanced Medium AI with better strategic understanding
+// Medium AI - strategic play with some randomness
 const getMediumMove = (
   board: GameBoard,
   availableMoves: number[],
   size: number,
 ): number => {
-  // Immediate win
+  // Always take a winning move
   for (const move of availableMoves) {
     const testBoard = makeMove(board, move, 'O');
     if (checkWinner(testBoard, size) === 'O') {
@@ -845,7 +910,7 @@ const getMediumMove = (
     }
   }
 
-  // Block immediate loss
+  // Always block opponent's winning move
   for (const move of availableMoves) {
     const testBoard = makeMove(board, move, 'X');
     if (checkWinner(testBoard, size) === 'X') {
@@ -853,9 +918,8 @@ const getMediumMove = (
     }
   }
 
-  // Create or block forks on larger boards
+  // Look for fork opportunities on larger boards
   if (size >= 4) {
-    // Look for fork opportunities
     for (const move of availableMoves) {
       const testBoard = makeMove(board, move, 'O');
       const forkScore = detectForks(testBoard, 'O', size);
@@ -864,17 +928,16 @@ const getMediumMove = (
       }
     }
 
-    // Block opponent forks
     for (const move of availableMoves) {
       const testBoard = makeMove(board, move, 'X');
       const forkScore = detectForks(testBoard, 'X', size);
       if (forkScore > AI_CONFIG.FORK_BONUS) {
-        return move; // Block by taking the position
+        return move;
       }
     }
   }
 
-  // Prioritize strategic positions
+  // Prefer strategic positions
   const strategicPositions = getStrategicPositions(size);
 
   for (const center of strategicPositions.center) {
@@ -889,12 +952,12 @@ const getMediumMove = (
     }
   }
 
-  // Small chance to play randomly to avoid being too predictable
+  // Add some randomness to avoid being too predictable
   if (Math.random() < AI_CONFIG.MEDIUM_RANDOM_PERCENTAGE) {
     return availableMoves[Math.floor(Math.random() * availableMoves.length)];
   }
 
-  // Use simple evaluation for remaining moves
+  // Choose the move with the best evaluation
   let bestMove = availableMoves[0];
   let bestScore = -Infinity;
 
@@ -910,13 +973,13 @@ const getMediumMove = (
   return bestMove;
 };
 
-// Elite Hard AI with full optimization suite
+// Hard AI - uses full minimax search
 const getHardMove = (
   board: GameBoard,
   availableMoves: number[],
   size: number,
 ): number => {
-  // Immediate win check
+  // Always take an immediate win
   for (const move of availableMoves) {
     const testBoard = makeMove(board, move, 'O');
     if (checkWinner(testBoard, size) === 'O') {
@@ -924,7 +987,7 @@ const getHardMove = (
     }
   }
 
-  // For very large boards, fall back to medium strategy
+  // Fall back to medium AI for very large boards
   if (size > AI_CONFIG.LARGE_BOARD_THRESHOLD) {
     console.log(
       `Board size ${size}x${size} too large for optimal AI - using strategic play`,
@@ -936,7 +999,7 @@ const getHardMove = (
   const totalCells = size * size;
   const remainingMoves = totalCells - moveCount;
 
-  // Near endgame - search to completion
+  // In endgame, search all remaining moves
   if (remainingMoves <= AI_CONFIG.ENDGAME_THRESHOLD) {
     const result = minimax(
       board,
@@ -951,12 +1014,12 @@ const getHardMove = (
     return result.bestMove ?? availableMoves[0];
   }
 
-  // Use iterative deepening for time-bounded optimal play
+  // Use iterative deepening for time-limited search
   if (PERFORMANCE_CONFIG.ENABLE_ITERATIVE_DEEPENING) {
     return iterativeDeepening(board, availableMoves, size);
   }
 
-  // Fallback to fixed-depth search
+  // Fixed depth search
   const maxDepth =
     PERFORMANCE_CONFIG.MAX_MINIMAX_DEPTH[
       size as keyof typeof PERFORMANCE_CONFIG.MAX_MINIMAX_DEPTH
@@ -971,15 +1034,14 @@ const getHardMove = (
     'O',
     maxDepth,
   );
-
   return result.bestMove ?? availableMoves[0];
 };
 
-// Main AI interface with error handling and logging
+// Main function to get AI move based on difficulty
 export const getAIMove = (
   board: GameBoard,
   difficulty: Difficulty,
-  size: number = BOARD_SIZE,
+  size: number = DEFAULT_BOARD_SIZE,
 ): number => {
   try {
     validateBoardSize(size);
@@ -991,16 +1053,14 @@ export const getAIMove = (
     }
 
     const availableMoves = getAvailableMoves(board);
-
     if (availableMoves.length === 0) {
       throw new Error('No available moves on the board');
     }
 
-    // Ensure caches are properly sized for current board
     const currentCacheSize = getCacheSize(size);
     if (
       boardEvaluationCache.size === 0 ||
-      currentCacheSize !== getCacheSize(BOARD_SIZE)
+      currentCacheSize !== getCacheSize(DEFAULT_BOARD_SIZE)
     ) {
       initializeCaches(size);
     }
@@ -1042,7 +1102,7 @@ export const getAIMove = (
   }
 };
 
-// Enhanced statistics calculation with error handling
+// Calculate win/loss statistics from game history
 export const calculateGameStats = (
   results: Array<{ result: 'win' | 'lose' | 'tie' }>,
 ): {
@@ -1088,17 +1148,18 @@ export const calculateGameStats = (
   return {
     ...stats,
     total,
-    winRate: Math.round(winRate * 100) / 100, // Round to 2 decimal places
+    winRate: Math.round(winRate * 100) / 100,
   };
 };
 
-// Performance monitoring and cache management
+// Clear all caches to free up memory
 export const clearCaches = (): void => {
   boardEvaluationCache.clear();
   transpositionTable.clear();
   console.log('All caches cleared');
 };
 
+// Get information about cache usage and performance
 export const getCacheStats = () => {
   const hitRate = boardEvaluationCache.getHitRate();
 
@@ -1110,13 +1171,13 @@ export const getCacheStats = () => {
       winningCombinationsCache.size +
       boardEvaluationCache.size +
       transpositionTable.size,
-    hitRate: Math.round(hitRate * 10000) / 100, // Percentage with 2 decimal places
+    hitRate: Math.round(hitRate * 10000) / 100,
     aiConfig: AI_CONFIG,
     performanceConfig: PERFORMANCE_CONFIG,
   };
 };
 
-// Enhanced serialization with board size metadata
+// Convert game state to JSON string for saving
 export const serializeBoardState = (
   board: GameBoard,
   moves: { player: Player; position: number }[],
@@ -1131,7 +1192,7 @@ export const serializeBoardState = (
       moves: moves,
       boardSize: size,
       timestamp: new Date().toISOString(),
-      version: '2.0', // Version for future compatibility
+      version: '2.0',
     };
 
     return JSON.stringify(data);
@@ -1141,7 +1202,7 @@ export const serializeBoardState = (
   }
 };
 
-// Robust deserialization with fallbacks
+// Convert JSON string back to game state
 export const deserializeBoardState = (
   serialized: string,
 ): {
@@ -1153,19 +1214,19 @@ export const deserializeBoardState = (
   try {
     const parsed = JSON.parse(serialized);
 
-    // Validate parsed data
     const finalBoard = Array.isArray(parsed.finalBoard)
       ? parsed.finalBoard
       : createEmptyBoard();
     const moves = Array.isArray(parsed.moves) ? parsed.moves : [];
     const boardSize =
-      typeof parsed.boardSize === 'number' ? parsed.boardSize : 3;
+      typeof parsed.boardSize === 'number'
+        ? parsed.boardSize
+        : DEFAULT_BOARD_SIZE;
     const timestamp =
       typeof parsed.timestamp === 'string'
         ? parsed.timestamp
         : new Date().toISOString();
 
-    // Additional validation
     validateBoardSize(boardSize);
 
     if (finalBoard.length !== boardSize * boardSize) {
@@ -1180,27 +1241,22 @@ export const deserializeBoardState = (
       };
     }
 
-    return {
-      finalBoard,
-      moves,
-      boardSize,
-      timestamp,
-    };
+    return { finalBoard, moves, boardSize, timestamp };
   } catch (error) {
     console.error('Error deserializing board state:', error);
     return {
       finalBoard: createEmptyBoard(),
       moves: [],
-      boardSize: 3,
+      boardSize: DEFAULT_BOARD_SIZE,
       timestamp: new Date().toISOString(),
     };
   }
 };
 
-// Enhanced replay with validation
+// Recreate a game by replaying all moves step by step
 export const replayGame = (
   moves: { player: Player; position: number }[],
-  size: number = BOARD_SIZE,
+  size: number = DEFAULT_BOARD_SIZE,
 ): GameBoard[] => {
   try {
     validateBoardSize(size);
@@ -1225,7 +1281,7 @@ export const replayGame = (
         boardStates.push([...currentBoard]);
       } catch (error) {
         console.error(`Error applying move ${i}:`, error);
-        break; // Stop replay on invalid move
+        break;
       }
     }
 
@@ -1236,7 +1292,7 @@ export const replayGame = (
   }
 };
 
-// Legacy compatibility functions with deprecation warnings
+// Old functions kept for backwards compatibility
 export const checkWin = (board: Board, player: Player): boolean => {
   console.warn('checkWin is deprecated, use checkWinner instead');
   try {
@@ -1276,12 +1332,18 @@ export const getRandomMove = (board: Board): number => {
   }
 };
 
-// Export AI configuration for external tuning
-export { AI_CONFIG, PERFORMANCE_CONFIG };
+// Make configuration available to other parts of the app
+export {
+  AI_CONFIG,
+  DEFAULT_BOARD_SIZE,
+  MAX_BOARD_SIZE,
+  MIN_BOARD_SIZE,
+  PERFORMANCE_CONFIG,
+};
 
-// Initialize default caches
+// Set up the caches when the module loads
 initializeCaches();
 
 console.log(
-  '🎮 Advanced Tic-Tac-Toe AI Engine initialized with full optimization suite',
+  '🎮 Advanced Tic-Tac-Toe AI Engine initialized with reviewer optimizations',
 );

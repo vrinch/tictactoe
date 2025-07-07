@@ -269,7 +269,7 @@ export default function GameScreen() {
     // Save game data separately
     try {
       const gameDuration = Date.now() - gameStartTime;
-      const boardState = serializeBoardState(finalBoard, gameMoves);
+      const boardState = serializeBoardState(finalBoard, gameMoves, boardSize);
 
       const gameResult = {
         id: Date.now().toString(),
